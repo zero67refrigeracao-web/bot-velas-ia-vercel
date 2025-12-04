@@ -1,66 +1,72 @@
-// API SEM BANCO, APENAS OPENAI
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Use POST em /api/analisar-velas' });
-  }
+import OpenAI from "openai";
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada na Vercel.' });
-  }
-
-  // LER BODY (caso req.body venha vazio)
-  let body = req.body;
-  if (!body || Object.keys(body).length === 0) {
-    let raw = '';
-    for await (const chunk of req) raw += chunk;
-    try { body = JSON.parse(raw); }
-    catch { body = {}; }
-  }
-
-  // PEGAR VELAS DO BODY
-  let velas = Array.isArray(body.velas) ? body.velas : [];
-
-  // fallback
-  if (!velas.length) {
-    velas = [
-      { open: 1.1000, close: 1.1015, high: 1.1021, low: 1.0997 },
-      { open: 1.1015, close: 1.1002, high: 1.1032, low: 1.0990 }
-    ];
-  }
-
+export default async function handler(req, res) {
   try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "Você é um analista de velas extremamente preciso."
-          },
-          {
-            role: "user",
-            content: `Analise essas velas: ${JSON.stringify(velas)}`
-          }
-        ]
-      })
+    const { velas, priceAction, timeframe, acertoMin } = req.body;
+
+    if (!velas || velas.length < 3) {
+      return res.status(400).json({
+        erro: "Velas insuficientes",
+        sinal: "NÃO OPERAR"
+      });
+    }
+
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
     });
 
-    const json = await r.json();
+    // CHAMADA GPT REAL
+    const resposta = await openai.chat.completions.create({
+      model: "gpt-5.1-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Você é um analista profissional de price action. Retorne APENAS JSON válido."
+        },
+        {
+          role: "user",
+          content: `
+ANÁLISE DE VELAS:
+${JSON.stringify(velas)}
 
-    return res.status(200).json({
-      ok: true,
-      resposta: json
+PRICE ACTION TÉCNICO:
+${JSON.stringify(priceAction)}
+
+TIMEFRAME: ${timeframe}
+
+RETORNE APENAS:
+{
+"sinal": "COMPRA|VENDA|NÃO OPERAR",
+"motivo": "...",
+"prob": "XX%"
+}
+`
+        }
+      ]
     });
+
+    let saida = resposta.choices[0].message.content;
+
+    try {
+      saida = JSON.parse(saida);
+    } catch (e) {
+      // fallback para não quebrar resposta
+      saida = {
+        sinal: "NÃO OPERAR",
+        motivo: "Falha ao interpretar JSON da IA",
+        prob: "0%"
+      };
+    }
+
+    // RETORNAR PARA EXTENSÃO
+    return res.status(200).json(saida);
 
   } catch (err) {
+    console.error("Erro backend IA:", err);
     return res.status(500).json({
-      error: "Erro na IA",
-      detalhe: String(err)
+      erro: "Falha no servidor",
+      sinal: "NÃO OPERAR"
     });
   }
-};
+}
