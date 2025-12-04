@@ -36,31 +36,32 @@ async function chamarOpenAI(velas, config) {
     throw new Error('OPENAI_API_KEY não configurada nas variáveis de ambiente da Vercel');
   }
 
-  // RESUMO DAS VELAS (CASO VENHA VAZIO)
   const resumoVelas = JSON.stringify(velas).slice(0, 4000);
 
   const prompt = `
 Você é um bot profissional de análise de velas para opções binárias.
-Use price action, tendência, fluxo, leitura simple das velas.
-O usuário deseja um alvo aproximado de acerto de ${config.acerto}%.
+Use price action, tendência, força das velas e contexto.
+O usuário deseja um alvo de acerto de ${config.acerto}% e até ${config.camadas} camadas de proteção.
 
 Retorne APENAS um JSON VÁLIDO:
 
-{{
+{
   "acao": "compra" | "venda" | "nao_operar",
   "confianca": 0-100,
   "comentario": "comentário curto",
   "segundosAntesEntrada": 5-20
-}}
+}
 
 Velas:
 ${resumoVelas}
   `.trim();
-
   const body = {
     model: 'gpt-4.1-mini',
     messages: [
-      { role: 'system', content: 'Você é um especialista em price action.' },
+      {
+        role: 'system',
+        content: 'Você é um especialista em price action e análise de velas.'
+      },
       { role: 'user', content: prompt }
     ],
     temperature: 0.4
@@ -97,16 +98,15 @@ ${resumoVelas}
   }
 
   return parsed;
-}
-
+} // FIM DA PARTE 2
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Use POST em /api/analisar-velas' });
   }
 
-  // LER O BODY CORRETAMENTE
+  // Leitura correta do body (POST)
   let body = req.body;
-  if (!body) {
+  if (!body || Object.keys(body).length === 0) {
     let raw = '';
     for await (const chunk of req) raw += chunk;
     try {
@@ -116,9 +116,8 @@ module.exports = async (req, res) => {
     }
   }
 
-  // SE NÃO TIVER VELAS, CRIA UM MODELO PADRÃO
+  // Se não vier velas, cria exemplo padrão
   let velas = Array.isArray(body.velas) ? body.velas : [];
-
   if (!velas.length) {
     velas = [
       { open: 1.1670, close: 1.1672, high: 1.1673, low: 1.1668, time: Date.now() }
@@ -144,14 +143,14 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       ok: true,
-      sinal: sinalIA,
-      segundos: sinalIA.segundosAntesEntrada || 10,
       acao: sinalIA.acao || "nao_operar",
       confianca: sinalIA.confianca || 0,
-      comentario: sinalIA.comentario || ""
+      comentario: sinalIA.comentario || "",
+      segundos: sinalIA.segundosAntesEntrada || 10
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("ERRO API:", err);
     return res.status(500).json({
       error: 'Erro ao chamar IA',
       detalhe: err.message || String(err)
