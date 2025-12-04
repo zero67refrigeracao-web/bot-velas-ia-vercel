@@ -59,4 +59,97 @@ ${resumoVelas}
     model: 'gpt-4.1-mini',
     messages: [
       { role: 'system', content: 'Você é especialista em price action.' },
-      { role: '
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0.4
+  };
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + process.env.OPENAI_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error('Erro HTTP OpenAI: ' + txt);
+  }
+
+  const data = await response.json();
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content || '';
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    parsed = {
+      acao: 'nao_operar',
+      confianca: 0,
+      comentario: 'Falha ao interpretar JSON',
+      segundosAntesEntrada: 10
+    };
+  }
+
+  return parsed;
+}
+
+module.exports = async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Use POST em /api/analisar-velas' });
+  }
+
+  let body = req.body;
+  if (!body || Object.keys(body).length === 0) {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = {};
+    }
+  }
+
+  let velas = Array.isArray(body.velas) ? body.velas : [];
+  if (!velas.length) {
+    velas = [
+      { open: 1.1670, close: 1.1672, high: 1.1673, low: 1.1668, time: Date.now() }
+    ];
+  }
+
+  const configReq = body.config || {};
+  const configAtual = await loadConfig();
+  const config = { ...configAtual, ...configReq };
+
+  try {
+    const sinalIA = await chamarOpenAI(velas, config);
+
+    config.stats.totalSinais += 1;
+    await saveConfig(config);
+
+    await registrarHistorico({
+      data: new Date().toISOString(),
+      velas,
+      configUsado: config,
+      sinal: sinalIA
+    });
+
+    return res.status(200).json({
+      ok: true,
+      acao: sinalIA.acao || "nao_operar",
+      confianca: sinalIA.confianca || 0,
+      comentario: sinalIA.comentario || "",
+      segundos: sinalIA.segundosAntesEntrada || 10
+    });
+
+  } catch (err) {
+    console.error("ERRO API:", err);
+    return res.status(500).json({
+      error: 'Erro ao chamar IA',
+      detalhe: err.message || String(err)
+    });
+  }
+};
