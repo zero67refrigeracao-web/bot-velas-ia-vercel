@@ -8,22 +8,19 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'OPENAI_API_KEY não configurada na Vercel.' });
   }
 
-  // LER BODY (caso o req.body venha vazio)
+  // LER BODY (caso req.body venha vazio)
   let body = req.body;
   if (!body || Object.keys(body).length === 0) {
     let raw = '';
     for await (const chunk of req) raw += chunk;
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      body = {};
-    }
+    try { body = JSON.parse(raw); }
+    catch { body = {}; }
   }
 
   // PEGAR VELAS DO BODY
   let velas = Array.isArray(body.velas) ? body.velas : [];
 
-  // Se nada for enviado, cria velas de teste
+  // fallback
   if (!velas.length) {
     velas = [
       { open: 1.1000, close: 1.1015, high: 1.1021, low: 1.0997 },
