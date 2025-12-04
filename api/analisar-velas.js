@@ -8,7 +8,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'OPENAI_API_KEY não configurada na Vercel.' });
   }
 
-  // LER BODY
+  // LER BODY (caso o req.body venha vazio)
   let body = req.body;
   if (!body || Object.keys(body).length === 0) {
     let raw = '';
@@ -20,8 +20,10 @@ module.exports = async (req, res) => {
     }
   }
 
-  // PEGAR VELAS (OU CRIAR EXEMPLO)
+  // PEGAR VELAS DO BODY
   let velas = Array.isArray(body.velas) ? body.velas : [];
+
+  // Se nada for enviado, cria velas de teste
   if (!velas.length) {
     velas = [
       { open: 1.1000, close: 1.1015, high: 1.1021, low: 1.0997 },
@@ -45,16 +47,23 @@ module.exports = async (req, res) => {
           },
           {
             role: "user",
-            content: `Analise essas velas: ${JSON.stringify(velas)} `
+            content: `Analise essas velas: ${JSON.stringify(velas)}`
           }
         ]
       })
     });
 
     const json = await r.json();
-    return res.status(200).json({ ok: true, resposta: json });
+
+    return res.status(200).json({
+      ok: true,
+      resposta: json
+    });
 
   } catch (err) {
-    return res.status(500).json({ error: "Erro na IA", detalhe: String(err) });
+    return res.status(500).json({
+      error: "Erro na IA",
+      detalhe: String(err)
+    });
   }
 };
