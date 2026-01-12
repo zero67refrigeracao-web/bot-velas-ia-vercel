@@ -1,4 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
+// ============================================
+// BOT IA PRO v8.0 - APENAS OPENAI GPT-4o
+// SEM Claude API - Mais simples!
+// ============================================
 
 export const config = {
   maxDuration: 60,
@@ -21,252 +24,189 @@ export default async function handler(req, res) {
       });
     }
 
-    const base64Image = print.split(",")[1];
+    console.log(`[${new Date().toISOString()}] Análise GPT-4o - TF: ${timeframe}`);
 
-    if (!base64Image) {
-      return res.status(400).json({
-        ok: false,
-        erro: "Formato de imagem inválido",
-        sinal: "NEUTRO",
-      });
-    }
+    // ANÁLISE COMPLETA COM GPT-4o VISION
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `Você é um ANALISTA PROFISSIONAL de price action e candlesticks.
 
-    // FASE 1: CLAUDE VISION
-    console.log(`[${new Date().toISOString()}] Fase 1: Claude Vision`);
+INSTRUÇÕES:
+1. Analise TODOS os padrões de candlesticks visíveis
+2. Identifique a tendência atual (alta/baixa/lateral)
+3. Verifique suporte/resistência importantes
+4. Considere volume se visível
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-
-    const promptClaude = `Você é um analista PROFISSIONAL de price action.
-
-ANÁLISE VISUAL:
-1. Identifique TODOS os padrões de candlesticks visíveis:
-   - Martelo, Enforcado, Doji, Pinbar
-   - Engolfo (bullish/bearish)
-   - Estrela da manhã/tarde
-
-2. Tendência atual (últimas 10-15 velas):
-   - ALTA: maioria verde, topos ascendentes
-   - BAIXA: maioria vermelha, fundos descendentes
-   - LATERAL: sem direção clara
-
-3. Suporte/Resistência:
-   - Preço em nível importante?
-   - Rejeição (pavios longos)?
-
-4. Volume (se visível)
+PADRÕES A IDENTIFICAR:
+- Martelo, Enforcado, Doji, Pinbar
+- Engolfo (bullish/bearish)
+- Estrela da manhã/tarde
+- Harami, Piercing, Dark Cloud
 
 REGRAS DE SINAL:
-- COMPRA: Reversão de alta + tendência anterior de baixa
-- VENDA: Reversão de baixa + tendência anterior de alta
-- NEUTRO: Lateral, sinais mistos
+- COMPRA: Padrão de reversão de alta + contexto favorável
+- VENDA: Padrão de reversão de baixa + contexto favorável
+- NEUTRO: Sinal fraco, lateral ou sem padrão claro
 
-Timeframe: ${timeframe}
-Confiança mínima: ${confiancaMinima}%
-
-RESPONDA APENAS JSON:
+RESPONDA APENAS JSON VÁLIDO (sem markdown):
 {
   "sinal": "COMPRA|VENDA|NEUTRO",
   "confianca": 75,
   "padroes": ["martelo", "suporte"],
   "tendencia": "baixa",
-  "motivo": "Martelo após queda forte",
-  "volume": "crescente",
-  "contexto": "Possível reversão para alta"
-}`;
+  "motivo": "Martelo após queda forte indica reversão",
+  "volume": "crescente|decrescente|normal",
+  "contexto": "Explicação detalhada da análise"
+}`
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analise este gráfico de candlesticks.
 
-    const respostaClaude = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/png",
-                data: base64Image,
+Timeframe: ${timeframe}
+Confiança mínima exigida: ${confiancaMinima}%
+
+Forneça análise técnica completa em JSON.`
               },
-            },
-            {
-              type: "text",
-              text: promptClaude,
-            },
-          ],
-        },
-      ],
+              {
+                type: "image_url",
+                image_url: { 
+                  url: print,
+                  detail: "high"
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.2
+      })
     });
 
-    let resultadoClaude;
-    const textoClaude = respostaClaude.content[0].text;
+    const data = await response.json();
 
-    try {
-      const jsonMatch = textoClaude.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        resultadoClaude = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("JSON não encontrado");
-      }
-    } catch (e) {
-      console.error("Erro parse Claude:", e);
-      return res.status(200).json({
-        ok: true,
+    if (data.error) {
+      console.error("Erro OpenAI:", data.error);
+      return res.status(500).json({
+        ok: false,
+        erro: data.error.message || "Erro na API OpenAI",
         sinal: "NEUTRO",
         confianca: 0,
-        motivo: "Erro ao processar análise visual",
-        fonte: "claude-erro",
       });
     }
 
-    console.log("Claude:", resultadoClaude);
+    const content = data.choices[0].message.content;
+    console.log("Resposta GPT-4o:", content);
 
-    // Se confiança muito baixa, retorna direto
-    if (resultadoClaude.confianca < confiancaMinima - 10) {
-      return res.status(200).json({
-        ok: true,
-        ...resultadoClaude,
-        fonte: "claude-only",
-        verificado: false,
-      });
-    }
-
-    // FASE 2: GPT-4o CONFIRMAÇÃO
-    console.log(`[${new Date().toISOString()}] Fase 2: GPT-4o confirmação`);
-
-    const promptGPT = `Você é um trader experiente validando uma análise.
-
-ANÁLISE PRÉVIA (Claude):
-- Sinal: ${resultadoClaude.sinal}
-- Confiança: ${resultadoClaude.confianca}%
-- Padrões: ${resultadoClaude.padroes?.join(", ")}
-- Tendência: ${resultadoClaude.tendencia}
-- Motivo: ${resultadoClaude.motivo}
-
-SUA TAREFA:
-1. Confirme se concorda
-2. Verifique sinais contraditórios
-3. Ajuste a confiança se necessário
-
-RESPONDA JSON:
-{
-  "concorda": true/false,
-  "confiancaAjustada": 80,
-  "observacoes": "Confirmo padrão, mas volume baixo",
-  "sinaisContradicao": [],
-  "recomendacao": "MANTER|AUMENTAR|DIMINUIR"
-}`;
-
-    const respostaGPT = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: "Você valida análises técnicas. Responda APENAS JSON válido.",
-            },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: promptGPT },
-                { type: "image_url", image_url: { url: print } },
-              ],
-            },
-          ],
-          max_tokens: 300,
-          temperature: 0.2,
-        }),
-      }
-    );
-
-    const dataGPT = await respostaGPT.json();
-
-    let resultadoGPT;
+    // Parse do JSON
+    let resultado;
     try {
-      const textoGPT = dataGPT.choices[0].message.content;
-      const jsonMatchGPT = textoGPT
-        .replace(/```json|```/g, "")
-        .match(/\{[\s\S]*\}/);
-      if (jsonMatchGPT) {
-        resultadoGPT = JSON.parse(jsonMatchGPT[0]);
-      } else {
-        throw new Error("JSON GPT não encontrado");
+      // Remove markdown se houver
+      let jsonStr = content.replace(/```json|```/g, '').trim();
+      
+      // Extrai JSON
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
       }
-    } catch (e) {
-      console.error("Erro parse GPT:", e);
-      return res.status(200).json({
-        ok: true,
-        ...resultadoClaude,
-        fonte: "claude-only",
-        verificado: false,
-        avisoGPT: "Falha na confirmação",
-      });
+      
+      resultado = JSON.parse(jsonStr);
+      
+      // Normaliza o sinal
+      let sinal = String(resultado.sinal || "").toUpperCase().trim();
+      
+      if (sinal.includes("COMPRA") || sinal.includes("BUY") || sinal.includes("CALL") || sinal.includes("UP")) {
+        sinal = "COMPRA";
+      } else if (sinal.includes("VENDA") || sinal.includes("SELL") || sinal.includes("PUT") || sinal.includes("DOWN")) {
+        sinal = "VENDA";
+      } else {
+        sinal = "NEUTRO";
+      }
+      
+      resultado.sinal = sinal;
+      
+      // Garante confiança entre 50-95
+      resultado.confianca = Math.min(95, Math.max(50, resultado.confianca || 70));
+      
+      // Valida confiança mínima
+      if (resultado.confianca < confiancaMinima) {
+        resultado.sinal = "NEUTRO";
+        resultado.motivo = `Confiança ${resultado.confianca}% abaixo do mínimo ${confiancaMinima}%. ${resultado.motivo || ''}`;
+      }
+      
+    } catch (parseError) {
+      console.error("Erro ao parsear JSON:", parseError);
+      console.error("Conteúdo original:", content);
+      
+      // Fallback: análise textual
+      const lower = content.toLowerCase();
+      
+      let sinal = "NEUTRO";
+      let confianca = 65;
+      
+      // Detecta menções diretas
+      if (lower.includes("compra") || lower.includes("buy") || lower.includes("call")) {
+        sinal = "COMPRA";
+        confianca = 72;
+      } else if (lower.includes("venda") || lower.includes("sell") || lower.includes("put")) {
+        sinal = "VENDA";
+        confianca = 72;
+      }
+      
+      resultado = {
+        sinal: sinal,
+        confianca: confianca,
+        motivo: "Análise baseada em interpretação textual",
+        padroes: [],
+        tendencia: "indefinida",
+        contexto: content.substring(0, 200)
+      };
     }
 
-    console.log("GPT confirmação:", resultadoGPT);
-
-    // FASE 3: DECISÃO FINAL
-    let sinalFinal = resultadoClaude.sinal;
-    let confiancaFinal = resultadoClaude.confianca;
-
-    if (!resultadoGPT.concorda) {
-      confiancaFinal = Math.max(
-        confiancaFinal - 15,
-        resultadoGPT.confiancaAjustada || 60
-      );
-    } else {
-      confiancaFinal = resultadoGPT.confiancaAjustada || confiancaFinal;
-    }
-
-    if (confiancaFinal < confiancaMinima) {
-      sinalFinal = "NEUTRO";
-    }
-
-    if (resultadoGPT.recomendacao === "DIMINUIR") {
-      sinalFinal = "NEUTRO";
-      confiancaFinal = Math.max(confiancaFinal - 10, 50);
-    }
-
-    console.log(`[${new Date().toISOString()}] FINAL:`, {
-      sinal: sinalFinal,
-      confianca: confiancaFinal,
+    console.log(`[${new Date().toISOString()}] Resultado final:`, {
+      sinal: resultado.sinal,
+      confianca: resultado.confianca
     });
 
+    // Resposta final
     return res.status(200).json({
       ok: true,
-      sinal: sinalFinal,
-      confianca: confiancaFinal,
-      motivo: resultadoClaude.motivo,
-      padroes: resultadoClaude.padroes,
-      tendencia: resultadoClaude.tendencia,
-      volume: resultadoClaude.volume,
-      contexto: resultadoClaude.contexto,
-      verificacao: {
-        gptConcorda: resultadoGPT.concorda,
-        observacoesGPT: resultadoGPT.observacoes,
-        sinaisContradicao: resultadoGPT.sinaisContradicao || [],
-      },
-      fonte: "hibrido",
+      sinal: resultado.sinal,
+      confianca: resultado.confianca,
+      motivo: resultado.motivo || "Análise técnica",
+      padroes: resultado.padroes || [],
+      tendencia: resultado.tendencia || "indefinida",
+      volume: resultado.volume || "não detectado",
+      contexto: resultado.contexto || "",
+      fonte: "openai-gpt4o",
       verificado: true,
       timestamp: new Date().toISOString(),
+      timeframe: timeframe
     });
+
   } catch (erro) {
-    console.error("Erro handler:", erro);
+    console.error("Erro no handler:", erro);
 
     let mensagem = "Erro no servidor";
+    
     if (erro.message?.includes("API key")) {
-      mensagem = "Erro de autenticação";
+      mensagem = "Erro de autenticação - verifique OPENAI_API_KEY";
     } else if (erro.message?.includes("rate limit")) {
-      mensagem = "Limite de requisições atingido";
+      mensagem = "Limite de requisições atingido, aguarde 1 minuto";
+    } else if (erro.message?.includes("timeout")) {
+      mensagem = "Timeout na análise, tente novamente";
     }
 
     return res.status(500).json({
@@ -274,6 +214,7 @@ RESPONDA JSON:
       erro: mensagem,
       sinal: "NEUTRO",
       confianca: 0,
+      detalhes: process.env.NODE_ENV === "development" ? erro.message : undefined
     });
   }
 }
