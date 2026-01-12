@@ -1,12 +1,11 @@
 {
   "name": "bot-velas-ia-vercel",
-  "version": "1.0.0",
-  "description": "Backend serverless na Vercel com IA (OpenAI) + KV para o Bot de Velas do Andre.",
-  "main": "index.js",
-  "scripts": {
-    "start": "vercel dev"
-  },
+  "version": "8.0.0",
+  "description": "Backend híbrido Claude + GPT para análise de candlesticks",
   "dependencies": {
-    "@vercel/kv": "latest"
+    "@anthropic-ai/sdk": "^0.32.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
