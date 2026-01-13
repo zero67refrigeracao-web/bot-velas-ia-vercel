@@ -1,11 +1,16 @@
 {
+  "type": "module",    ← ADICIONOU ESTA LINHA!
   "name": "bot-velas-ia-vercel",
   "version": "1.0.0",
-  "description": "Backend para análise de candlesticks com OpenAI",
-  "dependencies": {
-    "openai": "^4.67.3"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  ...
 }
+```
+
+---
+
+## ⏱️ **APÓS FAZER O COMMIT:**
+
+1. **Aguarde** novo deploy automático (1-2 min)
+2. **Teste** novamente:
+```
+   https://bullex-backend.vercel.app/api/analisar-velas
