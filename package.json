@@ -1,12 +1,5 @@
 {
-  "type": "module",
+  "type": "module",    ← TEM ESSA LINHA?
   "name": "bot-velas-ia-vercel",
-  "version": "1.0.0",
-  "description": "Backend para análise de candlesticks com OpenAI",
-  "dependencies": {
-    "openai": "^4.67.3"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  ...
 }
