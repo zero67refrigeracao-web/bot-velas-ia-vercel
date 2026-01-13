@@ -1,8 +1,0 @@
-{
-  "name": "bot-velas-ia-vercel",
-  "version": "8.0.0",
-  "description": "Backend com OpenAI GPT-4o para análise de candlesticks",
-  "engines": {
-    "node": ">=18.0.0"
-  }
-}
